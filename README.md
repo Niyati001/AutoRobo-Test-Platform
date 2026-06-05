@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="docs/screenshots/banner.png" alt="ARVP Banner" width="100%"/>
-
 # Autonomous Robotics Validation Platform
 
 ### Test entire robot fleets. No hardware. No datasets. Just chaos.
@@ -523,7 +521,7 @@ notifications       — Alert delivery history and webhook status
 
 ```
   SMALL WAREHOUSE — 50×50 grid  (25m × 25m, 0.5m/cell)
-  ┌────────────────────────────────────────────────────┐
+  ┌──────────────────────────────────────────────────┐
   │  [C] [C]  ·   ·   ·   ·   ·   ·   ·   ·   ·  [C] │  C = Charging Station
   │   ·   ·   ·  [S][S][S]  ·  [S][S][S]  ·   ·   ·  │  S = Shelf / Wall
   │   ·   ·   ·  [S][S][S]  ·  [S][S][S]  ·   ·   ·  │  P = Pickup Zone
@@ -535,7 +533,7 @@ notifications       — Alert delivery history and webhook status
   │   ·  [Z][Z][Z]  ·   ·   ·  [Z][Z][Z]  ·   ·   ·  │  Manhattan heuristic
   │   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·   ·  │  + collision avoidance
   │  [C]  ·   ·  [S][S][S]  ·  [S][S][S]  ·   ·  [C] │
-  └────────────────────────────────────────────────────┘
+  └──────────────────────────────────────────────────┘
 ```
 
 **Robot physics model:**
@@ -603,12 +601,12 @@ pytest tests/stress/ -v
 │                                                             │
 │  Stage 1: Lint (ruff) + docker-compose config validate      │
 │  Stage 2: Unit tests (pytest, no Docker)                    │
-│  Stage 3: ┌──────────────┐  Parallel image builds          │
+│  Stage 3: ┌──────────────┐  Parallel image builds           │
 │           │ Build all 9  │  (simulation, telemetry,         │
-│           │ Docker images│   validation, fault-injection...) │
+│           │ Docker images│   validation, fault-injection...)│
 │           └──────────────┘                                  │
 │  Stage 4: Integration smoke tests (compose up + API probes) │
-│  Stage 5: Observability checks (Prometheus healthy, Grafana) │
+│  Stage 5: Observability checks (Prometheus healthy, Grafana)│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -641,6 +639,5 @@ Built to demonstrate production-grade backend architecture applied to autonomous
 
 **9 microservices · 14 containers · 10 Hz telemetry · 8 validation tests · 9 fault types · real-time anomaly detection**
 
-[![Star this repo](https://img.shields.io/github/stars/YOUR_USERNAME/autonomous-robotics-validation-platform?style=social)](https://github.com/YOUR_USERNAME/autonomous-robotics-validation-platform)
 
 </div>
