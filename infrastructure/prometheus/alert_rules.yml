@@ -1,0 +1,151 @@
+groups:
+  - name: arvp_fault_injection
+    interval: 30s
+    rules:
+      - alert: HighFaultRate
+        expr: rate(faults_injected_total[1m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          team: robotics
+        annotations:
+          summary: "High fault injection rate on {{ $labels.robot_id }}"
+          description: >
+            Fault injection rate is {{ $value | humanizePercentage }} faults/min
+            for robot {{ $labels.robot_id }} (threshold: 5/min).
+            This may indicate a runaway fault injection loop or a real hardware cascade failure.
+
+  - name: arvp_robot_availability
+    interval: 15s
+    rules:
+      - alert: RobotOffline
+        expr: >
+          (time() - robot_telemetry_last_seen_timestamp_seconds) > 30
+          unless absent(robot_telemetry_last_seen_timestamp_seconds)
+        for: 0m
+        labels:
+          severity: critical
+          team: robotics
+        annotations:
+          summary: "Robot {{ $labels.robot_id }} is offline"
+          description: >
+            No telemetry received from robot {{ $labels.robot_id }} for
+            {{ $value | humanizeDuration }}. The robot may be powered off,
+            network-disconnected, or experiencing a hardware failure.
+
+      - alert: BatteryCritical
+        expr: min by (robot_id) (robot_battery_level) < 0.10
+        for: 1m
+        labels:
+          severity: critical
+          team: robotics
+        annotations:
+          summary: "Battery critically low on robot {{ $labels.robot_id }}"
+          description: >
+            Battery level on robot {{ $labels.robot_id }} is {{ $value | humanizePercentage }},
+            below the 10% critical threshold. Robot should return to charging station immediately.
+
+  - name: arvp_service_health
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: >
+            Service {{ $labels.job }} on instance {{ $labels.instance }} has been
+            unreachable for over 1 minute. This will impact platform functionality.
+            Check Docker container status and service logs immediately.
+
+  - name: arvp_hardware_health
+    interval: 30s
+    rules:
+      - alert: HighCPUTemp
+        expr: max by (robot_id) (robot_cpu_temp_celsius) > 85
+        for: 2m
+        labels:
+          severity: warning
+          team: robotics
+        annotations:
+          summary: "High CPU temperature on robot {{ $labels.robot_id }}"
+          description: >
+            CPU temperature on robot {{ $labels.robot_id }} is {{ $value }}°C,
+            exceeding the 85°C safety threshold. Check cooling systems and reduce
+            computational load if possible.
+
+  - name: arvp_anomaly_detection
+    interval: 30s
+    rules:
+      - alert: AnomalyBurst
+        expr: rate(anomalies_detected_total[1m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: robotics
+        annotations:
+          summary: "Anomaly burst detected in fleet"
+          description: >
+            Anomaly detection rate is {{ $value }} anomalies/min (threshold: 10/min).
+            This may indicate systematic sensor degradation, environmental interference,
+            or a fleet-wide software issue requiring investigation.
+
+  - name: arvp_validation
+    interval: 60s
+    rules:
+      - alert: ValidationFailure
+        expr: validation_pass_rate < 0.80
+        for: 5m
+        labels:
+          severity: warning
+          team: validation
+        annotations:
+          summary: "Low validation pass rate for {{ $labels.suite }}"
+          description: >
+            Validation pass rate for suite {{ $labels.suite }} is {{ $value | humanizePercentage }},
+            below the 80% threshold. Review recent changes to robot configuration,
+            navigation parameters, or simulation environment.
+
+  - name: arvp_infrastructure
+    interval: 30s
+    rules:
+      - alert: RedisHighMemory
+        expr: >
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis memory usage is high"
+          description: >
+            Redis memory usage is {{ $value | humanizePercentage }} of the configured maximum.
+            Current usage: {{ $labels.used }}. Consider increasing maxmemory or reducing
+            stream retention policies.
+
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: >
+            PostgreSQL is unreachable. All services depending on persistent storage
+            will fail. Check database container status immediately.
+
+      - alert: HighTelemetryLatency
+        expr: histogram_quantile(0.99, rate(telemetry_processing_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High telemetry processing latency"
+          description: >
+            P99 telemetry processing latency is {{ $value }}s, exceeding 500ms threshold.
+            This may cause stale data in dashboards and delayed fault detection.

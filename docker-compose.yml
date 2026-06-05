@@ -1,0 +1,413 @@
+version: "3.9"
+
+networks:
+  arvp-network:
+    driver: bridge
+  arvp-data:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+x-common-env: &common-env
+  env_file:
+    - .env
+
+services:
+  # ─── Data Layer ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-arvp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arvp_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-arvp_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arvp} -d ${POSTGRES_DB:-arvp_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - arvp-data
+      - arvp-network
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 300
+      --notify-keyspace-events KEA
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - arvp-data
+      - arvp-network
+    ports:
+      - "6379:6379"
+
+  # ─── Application Services ─────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      SERVICE_NAME: auth-service
+      SERVICE_PORT: 8006
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8006/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  telemetry-service:
+    build:
+      context: ./services/telemetry-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      TELEMETRY_PUBLISH_RATE_HZ: ${TELEMETRY_PUBLISH_RATE_HZ:-10}
+      SERVICE_NAME: telemetry-service
+      SERVICE_PORT: 8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  simulation-service:
+    build:
+      context: .
+      dockerfile: services/simulation-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      SIMULATION_MODE: ${SIMULATION_MODE:-synthetic}
+      SERVICE_NAME: simulation-service
+      SERVICE_PORT: 8002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  validation-service:
+    build:
+      context: ./services/validation-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      SERVICE_NAME: validation-service
+      SERVICE_PORT: 8003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8003/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  fault-injection-service:
+    build:
+      context: ./services/fault-injection-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      SERVICE_NAME: fault-injection-service
+      SERVICE_PORT: 8004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8004/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  diagnostics-service:
+    build:
+      context: ./services/diagnostics-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      SERVICE_NAME: diagnostics-service
+      SERVICE_PORT: 8005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8005/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8007:8007"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      SERVICE_NAME: analytics-service
+      SERVICE_PORT: 8007
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8007/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      SERVICE_NAME: notification-service
+      SERVICE_PORT: 8008
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8008/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://arvp:arvp_pass@postgres:5432/arvp_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-openssl-rand-hex-32}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      AUTH_SERVICE_URL: http://auth-service:8006
+      TELEMETRY_SERVICE_URL: http://telemetry-service:8001
+      SIMULATION_SERVICE_URL: http://simulation-service:8002
+      VALIDATION_SERVICE_URL: http://validation-service:8003
+      FAULT_INJECTION_SERVICE_URL: http://fault-injection-service:8004
+      DIAGNOSTICS_SERVICE_URL: http://diagnostics-service:8005
+      ANALYTICS_SERVICE_URL: http://analytics-service:8007
+      NOTIFICATION_SERVICE_URL: http://notification-service:8008
+      SERVICE_NAME: api-gateway
+      SERVICE_PORT: 8000
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      telemetry-service:
+        condition: service_healthy
+      simulation-service:
+        condition: service_healthy
+      validation-service:
+        condition: service_healthy
+      fault-injection-service:
+        condition: service_healthy
+      diagnostics-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    networks:
+      - arvp-network
+      - arvp-data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ─── Observability ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    networks:
+      - arvp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin123}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_PLUGINS_ENABLE_ALPHA: "false"
+      GF_FEATURE_TOGGLES_ENABLE: ""
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - arvp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
+      - grafana
+      - prometheus
+    networks:
+      - arvp-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

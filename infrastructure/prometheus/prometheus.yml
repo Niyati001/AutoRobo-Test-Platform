@@ -1,0 +1,116 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: "arvp-production"
+    environment: "production"
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # alertmanager:9093
+
+scrape_configs:
+  # ─── API Gateway ──────────────────────────────────────────────────────────
+  - job_name: "api-gateway"
+    static_configs:
+      - targets: ["api-gateway:8000"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: service
+        replacement: "api-gateway"
+
+  # ─── Telemetry Service ────────────────────────────────────────────────────
+  - job_name: "telemetry-service"
+    static_configs:
+      - targets: ["telemetry-service:8001"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "telemetry-service"
+
+  # ─── Simulation Service ───────────────────────────────────────────────────
+  - job_name: "simulation-service"
+    static_configs:
+      - targets: ["simulation-service:8002"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "simulation-service"
+
+  # ─── Validation Service ───────────────────────────────────────────────────
+  - job_name: "validation-service"
+    static_configs:
+      - targets: ["validation-service:8003"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "validation-service"
+
+  # ─── Fault Injection Service ──────────────────────────────────────────────
+  - job_name: "fault-injection-service"
+    static_configs:
+      - targets: ["fault-injection-service:8004"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "fault-injection-service"
+
+  # ─── Diagnostics Service ──────────────────────────────────────────────────
+  - job_name: "diagnostics-service"
+    static_configs:
+      - targets: ["diagnostics-service:8005"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "diagnostics-service"
+
+  # ─── Auth Service ─────────────────────────────────────────────────────────
+  - job_name: "auth-service"
+    static_configs:
+      - targets: ["auth-service:8006"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "auth-service"
+
+  # ─── Analytics Service ────────────────────────────────────────────────────
+  - job_name: "analytics-service"
+    static_configs:
+      - targets: ["analytics-service:8007"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "analytics-service"
+
+  # ─── Notification Service ─────────────────────────────────────────────────
+  - job_name: "notification-service"
+    static_configs:
+      - targets: ["notification-service:8008"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+    relabel_configs:
+      - target_label: service
+        replacement: "notification-service"
+
+  # ─── Prometheus Self-Monitoring ───────────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
